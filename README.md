@@ -1,43 +1,33 @@
 # Image to 3D — Generación y ajuste de ropa 3D
 
-Base del proyecto conforme a **Requisitos_Proyecto_Image_to_3D.docx v1.0 (2026-10-23)**.
+Base de Requisitos_Proyecto_Image_to_3D.docx v1.0 (2026-10-23).
 
 ## Estado
-Estructura inicial y entorno reproducible para Windows. La generación de geometría mediante IA es una etapa pendiente: no se afirma que esté implementada hasta seleccionar y validar un método compatible con el hardware objetivo.
+Base modular para Windows: interfaz inicial, validación, ciclo de vida de trabajos, detección de Blender, pruebas y documentación. La generación mediante IA, ajuste geométrico, visor 3D y exportación real están pendientes y no se simulan como implementados.
 
-## Requisitos
-- Windows 10/11 de 64 bits (mínimo provisional).
-- Python 3.11 de 64 bits.
-- Blender instalado por separado; la versión soportada se debe fijar tras verificar automatización y exportadores.
-- GPU NVIDIA RTX 2050 como objetivo de referencia, no garantía de compatibilidad con cualquier modelo.
+## Entorno
+Windows 10/11 de 64 bits (provisional), Python 3.11 de 64 bits y Blender instalado por separado. Aunque el equipo tenga Python 3.14.6 y 3.10, recomiendo instalar Python 3.11 para esta base: evita depender de ruedas binarias aún no verificadas en 3.14 y no iniciar el proyecto sobre Python 3.10, cuyo soporte de seguridad termina en octubre de 2026. GPU de referencia: NVIDIA RTX 2050, sin garantía de que cualquier modelo quepa en VRAM.
 
-## Inicio rápido (PowerShell)
-```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip setuptools wheel
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
-python app.py
-```
-Si PowerShell bloquea la activación: `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`.
+En PowerShell, desde D:\Mios\ImagenTo3D_Clothes:
+    py -3.11 -m venv .venv
+    .\.venv\Scripts\Activate.ps1
+    python -m pip install --upgrade pip setuptools wheel
+    python -m pip install -r requirements.txt
+    python -m pip install -r requirements-dev.txt
+    python -m pytest
+    python app.py
 
-## Diseño
-- `frontend/`: interfaz local.
-- `backend/validation/`: entradas y parámetros.
-- `backend/generation/`: adaptador de generación (pendiente de seleccionar modelo).
-- `backend/fitting/`: modos oversize/ceñido.
-- `backend/blender/`: detección y automatización de Blender.
-- `backend/export/`: salidas BLEND, GLB y OBJ.
-- `backend/jobs/`: ciclo de vida de trabajos.
-- `config/`: límites locales configurables.
-- `tests/`: pruebas.
-- `docs/`: arquitectura, instalación y decisiones pendientes.
+Si PowerShell bloquea la activación: Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass. Comprueba que python -c "import sys; print(sys.executable)" apunta dentro de .venv.
 
-Lee `docs/INSTALL_WINDOWS.md`, `docs/ARCHITECTURE.md` y `docs/DECISIONS.md` antes de implementar la generación.
+## Estructura
+- app.py: interfaz de escritorio inicial (Tkinter).
+- backend/validation: validación de imágenes, WEBM y BLEND.
+- backend/jobs: estados e identificadores.
+- backend/generation: punto de integración pendiente.
+- backend/fitting: modos oversize y ceñido.
+- backend/blender: detección de Blender.
+- backend/export: formatos previstos BLEND, GLB y OBJ.
+- config: límites configurables.
+- tests y docs: pruebas y documentación.
 
-## Principios
-El archivo .blend de entrada no se modifica; las salidas son nuevas. Las entradas se validan, los trabajos tienen estado e identificador, los temporales se aíslan por trabajo y se limpian con seguridad. No se envían archivos a servicios externos sin una decisión explícita e información al usuario.
-
-## Git
-Mantener `main` como base estable. Trabajar en ramas `feature/<tema>` o `fix/<tema>`, probar y revisar antes de integrar. No versionar entornos virtuales, modelos, temporales, logs ni resultados generados.
+El archivo BLEND original no debe modificarse. No enviar archivos a servicios externos sin decisión explícita. Mantener main estable y usar ramas feature/<tema> o fix/<tema>. No versionar entornos, modelos, temporales, logs ni resultados.
