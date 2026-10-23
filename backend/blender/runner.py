@@ -14,14 +14,32 @@ class BlenderCancelledError(RuntimeError):
 
 
 def find_blender():
+    """Busca Blender por variable de entorno, PATH y rutas habituales de Windows."""
     configured = os.environ.get("BLENDER_EXECUTABLE", "").strip().strip('"')
     candidates = [Path(configured)] if configured else []
     located = shutil.which("blender") or shutil.which("blender.exe")
     if located:
         candidates.append(Path(located))
+
+    # Ruta solicitada por el proyecto y otras versiones instaladas en Program Files.
+    program_files = Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+    blender_root = program_files / "Blender Foundation"
+    preferred = blender_root / "Blender 4.4" / "blender.exe"
+    candidates.append(preferred)
+    if blender_root.is_dir():
+        candidates.extend(sorted(blender_root.glob("Blender */blender.exe"), reverse=True))
+
+    seen = set()
     for candidate in candidates:
-        if candidate.is_file() and candidate.suffix.lower() in {".exe", ""}:
-            return candidate.resolve()
+        try:
+            normalized = candidate.resolve()
+        except OSError:
+            normalized = candidate
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        if normalized.is_file() and normalized.suffix.lower() in {".exe", ""}:
+            return normalized
     return None
 
 

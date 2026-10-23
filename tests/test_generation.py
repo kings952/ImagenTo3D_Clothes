@@ -9,7 +9,9 @@ def test_reference_color_extracts_rgb_and_frame(tmp_path):
     Image.new("RGB", (32, 24), (210, 40, 60)).save(source)
     color, frame = _reference_color(source, tmp_path)
     assert len(color) == 3
-    assert color[0] > color[1] > color[2]
+    # RGB (210, 40, 60): red > blue > green, not red > green > blue.
+    assert color[0] > color[2] > color[1]
+    assert color == (0.8235, 0.1569, 0.2353)
     assert frame.is_file()
 
 
