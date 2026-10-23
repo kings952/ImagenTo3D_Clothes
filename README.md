@@ -64,3 +64,14 @@ Cada ejecución crea una carpeta outputs/image_to_3d_<id>/ con los formatos expo
 - Si un exportador no está disponible, revisa blender.log en la carpeta del trabajo.
 - Si la prenda aparece desplazada o fuera de escala, la escena puede tener el cuerpo rotado, no centrado, o incluir mallas auxiliares que alteran los límites globales.
 - Los tests unitarios no sustituyen una prueba de integración con un archivo BLEND real en tu PC.
+
+
+## Segmentación semántica experimental
+
+La GUI incluye una previsualización por categorías si se instalan opcionalmente `transformers` y `torch`. El modelo SegFormer de ropa intenta localizar categorías como `upper-clothes`, `dress`, `skirt` y `pants`; requiere descarga inicial del modelo y conexión a internet. La calidad depende de la vista, oclusiones y dominio de la imagen. No reconstruye varias vistas en una malla 3D coherente.
+
+Instalación opcional:
+
+    python -m pip install transformers torch
+
+La salida de malla sigue siendo procedural en esta versión. No se debe interpretar la máscara de categorías como un patrón de costura ni como geometría 3D recuperada.
