@@ -17,6 +17,19 @@ def parse_config():
     return json.loads(Path(args[0]).read_text(encoding="utf-8"))
 
 
+def is_body_candidate(obj):
+    """Exclude rig helpers/auxiliary meshes that distort the body envelope."""
+    if obj.type != "MESH" or obj.hide_render or obj.hide_get():
+        return False
+    name = obj.name.lower()
+    excluded_tokens = ("wing", "normal_spread", "helper", "collider", "collision",
+                       "bone_shape", "gizmo", "control", "proxy", "target", "pole")
+    if any(token in name for token in excluded_tokens):
+        return False
+    dims = obj.dimensions
+    return max(dims.x, dims.y, dims.z) > 1e-5
+
+
 def world_bounds(objects):
     points = []
     for obj in objects:
@@ -146,7 +159,10 @@ def create_preview(bounds_min, bounds_max, output_path):
 def main():
     config = parse_config()
     output = Path(config["output_dir"])
-    mesh_objects = [obj for obj in bpy.context.scene.objects if obj.type == "MESH"]
+    # Excluir auxiliares del rig que pueden inflar el bounding box y la ropa.
+    mesh_objects = [obj for obj in bpy.context.scene.objects if is_body_candidate(obj)]
+    if not mesh_objects:
+        mesh_objects = [obj for obj in bpy.context.scene.objects if obj.type == "MESH" and not obj.hide_render]
     bounds_min, bounds_max = world_bounds(mesh_objects)
     size = bounds_max - bounds_min
     height = max(size.z, 0.5)
@@ -172,7 +188,7 @@ def main():
         create_sleeve(material, start, end, radius_y, radius_z, scale, "Garment_Sleeve_" + label)
 
     # La escena de salida incluye cámara y luces para que el BLEND se pueda inspeccionar.
-    all_min, all_max = world_bounds([obj for obj in bpy.context.scene.objects if obj.type == "MESH"])
+    all_min, all_max = world_bounds(mesh_objects + [obj for obj in bpy.context.scene.objects if obj.name.startswith("Garment_")])
     create_preview(all_min, all_max, output / "preview.png")
     # Empaqueta recursos externos cuando sea posible antes de crear la copia editable.
     try:

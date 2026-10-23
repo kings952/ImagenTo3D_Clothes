@@ -38,6 +38,7 @@ class ImageTo3DApp(tk.Tk):
         self._worker = None
         self._preview_image = None
         self._reference_preview_image = None
+        self._processed_preview_image = None
         self._last_result = None
         self._started_at = None
         self._build()
@@ -58,12 +59,20 @@ class ImageTo3DApp(tk.Tk):
         self._file_row(files, "Referencia PNG/JPG/WEBM", self.reference, self._choose_reference, 0)
         self._file_row(files, "Cuerpo destino (.blend)", self.blend, self._choose_blend, 1)
         self._file_row(files, "Carpeta de salida", self.output, self._choose_output, 2)
-        input_preview = ttk.LabelFrame(files, text="Vista previa de la referencia seleccionada", padding=8)
-        input_preview.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(8, 0))
-        self.reference_preview_label = ttk.Label(input_preview, text="Selecciona una imagen o un vídeo para verla aquí.", anchor="center", width=28)
-        self.reference_preview_label.pack(side="left", padx=(0, 12))
-        self.reference_info_label = ttk.Label(input_preview, text="La imagen/vídeo elegido se mostrará antes de generar.", wraplength=650, justify="left")
-        self.reference_info_label.pack(side="left", fill="x", expand=True)
+        previews = ttk.Frame(files)
+        previews.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+        input_preview = ttk.LabelFrame(previews, text="1. Imagen original", padding=8)
+        input_preview.pack(side="left", fill="both", expand=True, padx=(0, 6))
+        self.reference_preview_label = ttk.Label(input_preview, text="Selecciona una imagen o un vídeo.", anchor="center")
+        self.reference_preview_label.pack(fill="both", expand=True)
+        self.reference_info_label = ttk.Label(input_preview, text="La referencia seleccionada aparecerá aquí.", wraplength=350, justify="left")
+        self.reference_info_label.pack(fill="x", pady=(6, 0))
+        processed_preview = ttk.LabelFrame(previews, text="2. Procesamiento / región candidata", padding=8)
+        processed_preview.pack(side="left", fill="both", expand=True, padx=(6, 0))
+        self.processed_preview_label = ttk.Label(processed_preview, text="Aquí se mostrará una máscara preliminar.", anchor="center")
+        self.processed_preview_label.pack(fill="both", expand=True)
+        self.processed_info_label = ttk.Label(processed_preview, text="La máscara ayuda a revisar el recorte; no identifica por sí sola tipos de prendas.", wraplength=350, justify="left")
+        self.processed_info_label.pack(fill="x", pady=(6, 0))
         files.columnconfigure(1, weight=1)
         options = ttk.LabelFrame(root, text="Ajuste de la prenda", padding=10)
         options.pack(fill="x", pady=10)
@@ -120,9 +129,12 @@ class ImageTo3DApp(tk.Tk):
     def _update_reference_preview(self, value):
         path = Path(value).expanduser() if value.strip() else None
         self._reference_preview_image = None
+        self._processed_preview_image = None
         if path is None:
-            self.reference_preview_label.configure(image="", text="Selecciona una imagen o un vídeo para verla aquí.")
-            self.reference_info_label.configure(text="La imagen/vídeo elegido se mostrará antes de generar.")
+            self.reference_preview_label.configure(image="", text="Selecciona una imagen o un vídeo.")
+            self.reference_info_label.configure(text="La referencia seleccionada aparecerá aquí.")
+            self.processed_preview_label.configure(image="", text="Aquí se mostrará una máscara preliminar.")
+            self.processed_info_label.configure(text="La máscara no clasifica semánticamente las prendas.")
             return
         if not path.is_file():
             self.reference_preview_label.configure(image="", text="Archivo no encontrado")
@@ -148,16 +160,44 @@ class ImageTo3DApp(tk.Tk):
                     capture.release()
             else:
                 image = Image.open(path).convert("RGB")
+            original = image.copy()
             try:
-                image.thumbnail((220, 170))
+                image.thumbnail((340, 260))
                 self._reference_preview_image = ImageTk.PhotoImage(image.copy())
             finally:
                 image.close()
             self.reference_preview_label.configure(image=self._reference_preview_image, text="")
-            self.reference_info_label.configure(text=f"Archivo seleccionado:\n{path.name}\n\nRuta completa:\n{path}\n\nComprueba que esta sea la referencia correcta antes de generar.")
+            self.reference_info_label.configure(text=f"{path.name}\n{original.width} × {original.height} px\n{path}")
+            try:
+                import cv2
+                import numpy as np
+                rgb = np.asarray(original.convert("RGB"))
+                h, w = rgb.shape[:2]
+                bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+                mask = np.zeros((h, w), np.uint8)
+                rect = (max(1, int(w * .08)), max(1, int(h * .04)),
+                        max(2, int(w * .84)), max(2, int(h * .92)))
+                bgd, fgd = np.zeros((1, 65), np.float64), np.zeros((1, 65), np.float64)
+                cv2.grabCut(bgr, mask, rect, bgd, fgd, 3, cv2.GC_INIT_WITH_RECT)
+                foreground = np.where((mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 255, 0).astype("uint8")
+                contours, _ = cv2.findContours(foreground, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                overlay = rgb.copy()
+                cv2.drawContours(overlay, contours, -1, (255, 60, 40), max(1, w // 250))
+                preview = Image.fromarray(overlay)
+                preview.thumbnail((340, 260))
+                self._processed_preview_image = ImageTk.PhotoImage(preview.copy())
+                preview.close()
+                self.processed_preview_label.configure(image=self._processed_preview_image, text="")
+                self.processed_info_label.configure(text="Contorno rojo = silueta candidata (GrabCut). No distingue automáticamente camisa, pantalón u otras categorías.")
+            except Exception as segmentation_error:
+                self.processed_preview_label.configure(image="", text="No se pudo generar la máscara")
+                self.processed_info_label.configure(text=f"Procesamiento no disponible: {segmentation_error}")
+            original.close()
         except Exception as exc:
             self.reference_preview_label.configure(image="", text="No se pudo previsualizar")
             self.reference_info_label.configure(text=f"Archivo seleccionado: {path.name}\nRuta: {path}\nDetalle: {exc}")
+            self.processed_preview_label.configure(image="", text="Procesamiento no disponible")
+            self.processed_info_label.configure(text="Selecciona una imagen legible para calcular la máscara candidata.")
 
     def _choose_blend(self):
         path = filedialog.askopenfilename(filetypes=[("Escena Blender", "*.blend"), ("Todos los archivos", "*.*")])
