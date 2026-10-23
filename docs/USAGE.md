@@ -1,9 +1,11 @@
-# Uso inicial
+# Uso
 
-1. Activa el entorno y ejecuta python app.py.
-2. Selecciona PNG/JPG/JPEG o WEBM.
-3. Selecciona el archivo .blend del cuerpo destino.
-4. Elige oversize o ceñido y una carpeta de salida.
-5. Pulsa Validar entradas o Comprobar Blender.
+1. Activa el entorno virtual y ejecuta python app.py.
+2. Selecciona una referencia PNG/JPG/JPEG o WEBM.
+3. Selecciona el archivo BLEND que contiene el cuerpo.
+4. Elige oversize o ceñido, ajusta la intensidad y selecciona una carpeta de salida.
+5. Pulsa Generar y exportar. Blender se ejecuta en segundo plano.
+6. Revisa el render y las rutas del panel derecho.
+7. Cambia el modo o intensidad y vuelve a generar; cada trabajo se guarda en una carpeta diferente.
 
-El botón de generación indica que el motor aún no está configurado. Esta base no genera ropa ni exporta geometría; eso se implementará después de seleccionar y probar el método 3D.
+La referencia aporta el color medio, no la geometría de la ropa. La prenda es una plantilla paramétrica inicial, no una reconstrucción mediante IA. Revisa blender.log si un formato no se exporta.

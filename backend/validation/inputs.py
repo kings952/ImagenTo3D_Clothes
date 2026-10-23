@@ -1,10 +1,11 @@
-"""Validación de entradas sin modificar archivos originales."""
+"""Validación de imágenes, vídeos y archivos BLEND."""
 from pathlib import Path
 from PIL import Image, UnidentifiedImageError
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
-VIDEO_EXTENSIONS = {".webm"}
 DEFAULT_MAX_INPUT_MB = 250
+MAX_IMAGE_DIMENSION = 8192
+MAX_VIDEO_SECONDS = 30
 
 
 def _existing_file(value, label, max_size_mb):
@@ -27,7 +28,10 @@ def validate_reference(value, max_size_mb=DEFAULT_MAX_INPUT_MB):
         try:
             with Image.open(path) as image:
                 image.verify()
-        except (UnidentifiedImageError, OSError, ValueError) as exc:
+            with Image.open(path) as image:
+                if max(image.size) > MAX_IMAGE_DIMENSION:
+                    raise ValueError(f"La imagen supera {MAX_IMAGE_DIMENSION} píxeles por lado.")
+        except (UnidentifiedImageError, OSError) as exc:
             raise ValueError("La imagen no es válida o está dañada.") from exc
     elif ext == ".webm":
         try:
@@ -36,8 +40,14 @@ def validate_reference(value, max_size_mb=DEFAULT_MAX_INPUT_MB):
             raise ValueError("Falta OpenCV. Instala requirements.txt.") from exc
         capture = cv2.VideoCapture(str(path))
         try:
-            if not capture.isOpened() or int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) <= 0:
-                raise ValueError("No se pudo leer el WEBM; comprueba el archivo y sus códecs.")
+            if not capture.isOpened():
+                raise ValueError("No se pudo abrir el WEBM; comprueba el archivo y sus códecs.")
+            frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = float(capture.get(cv2.CAP_PROP_FPS) or 0)
+            if frames <= 0:
+                raise ValueError("El WEBM no contiene fotogramas legibles.")
+            if fps > 0 and frames / fps > MAX_VIDEO_SECONDS:
+                raise ValueError(f"El WEBM supera el límite de {MAX_VIDEO_SECONDS} segundos.")
         finally:
             capture.release()
     else:
