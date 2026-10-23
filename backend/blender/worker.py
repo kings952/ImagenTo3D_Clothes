@@ -1,0 +1,205 @@
+"""Script ejecutado dentro de Blender: prenda paramétrica, render y exportación."""
+import json
+import math
+import sys
+from pathlib import Path
+
+import bpy
+from mathutils import Vector
+
+
+def parse_config():
+    if "--" not in sys.argv:
+        raise RuntimeError("Falta la ruta del archivo de configuración después de --.")
+    args = sys.argv[sys.argv.index("--") + 1:]
+    if not args:
+        raise RuntimeError("No se recibió el archivo de configuración.")
+    return json.loads(Path(args[0]).read_text(encoding="utf-8"))
+
+
+def world_bounds(objects):
+    points = []
+    for obj in objects:
+        if obj.type == "MESH":
+            points.extend(obj.matrix_world @ Vector(corner) for corner in obj.bound_box)
+    if not points:
+        return Vector((-0.5, -0.4, 0.0)), Vector((0.5, 0.4, 1.8))
+    return (Vector(tuple(min(p[i] for p in points) for i in range(3))),
+            Vector(tuple(max(p[i] for p in points) for i in range(3))))
+
+
+def make_material(rgb):
+    material = bpy.data.materials.new("ImageTo3D_ReferenceColor")
+    material.diffuse_color = (*rgb, 1.0)
+    material.use_nodes = True
+    bsdf = material.node_tree.nodes.get("Principled BSDF")
+    if bsdf:
+        bsdf.inputs["Base Color"].default_value = (*rgb, 1.0)
+        bsdf.inputs["Roughness"].default_value = 0.78
+    return material
+
+
+def mesh_object(name, vertices, faces, material):
+    mesh = bpy.data.meshes.new(name + "_Mesh")
+    mesh.from_pydata(vertices, [], faces)
+    mesh.update()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    obj.data.materials.append(material)
+    for polygon in mesh.polygons:
+        polygon.use_smooth = True
+    solid = obj.modifiers.new("FabricThickness", "SOLIDIFY")
+    solid.thickness = 0.006
+    bevel = obj.modifiers.new("SoftEdges", "BEVEL")
+    bevel.width = 0.003
+    bevel.segments = 2
+    return obj
+
+
+def create_torso(material, cx, cy, z0, z1, width, depth, scale):
+    segments = 40
+    profiles = [(0.0, 0.78), (0.10, 0.83), (0.25, 0.90), (0.48, 0.98),
+                (0.70, 1.0), (0.88, 0.94), (1.0, 0.72)]
+    vertices, faces = [], []
+    for t, factor in profiles:
+        rx = width * factor * scale / 2
+        ry = depth * (0.82 + 0.18 * factor) * scale / 2
+        z = z0 + (z1 - z0) * t
+        for i in range(segments):
+            angle = 2 * math.pi * i / segments
+            vertices.append((cx + rx * math.cos(angle), cy + ry * math.sin(angle), z))
+    for ring in range(len(profiles) - 1):
+        for i in range(segments):
+            a = ring * segments + i
+            b = ring * segments + (i + 1) % segments
+            c = (ring + 1) * segments + (i + 1) % segments
+            d = (ring + 1) * segments + i
+            faces.append((a, b, c, d))
+    return mesh_object("Garment_Torso", vertices, faces, material)
+
+
+def create_sleeve(material, start, end, radius_y, radius_z, scale, name):
+    segments, rings = 24, 5
+    start, end = Vector(start), Vector(end)
+    axis = (end - start).normalized()
+    basis_y = Vector((0, 1, 0))
+    basis_y = (basis_y - axis * basis_y.dot(axis)).normalized()
+    basis_n = axis.cross(basis_y).normalized()
+    vertices, faces = [], []
+    for ring in range(rings):
+        t = ring / (rings - 1)
+        center = start.lerp(end, t)
+        taper = (1.0 - 0.22 * t) * scale
+        for i in range(segments):
+            angle = 2 * math.pi * i / segments
+            point = center + basis_y * (math.cos(angle) * radius_y * taper)
+            point += basis_n * (math.sin(angle) * radius_z * taper)
+            vertices.append(tuple(point))
+    for ring in range(rings - 1):
+        for i in range(segments):
+            a = ring * segments + i
+            b = ring * segments + (i + 1) % segments
+            c = (ring + 1) * segments + (i + 1) % segments
+            d = (ring + 1) * segments + i
+            faces.append((a, b, c, d))
+    return mesh_object(name, vertices, faces, material)
+
+
+def aim(obj, target):
+    obj.rotation_euler = (Vector(target) - obj.location).to_track_quat("-Z", "Y").to_euler()
+
+
+def create_preview(bounds_min, bounds_max, output_path):
+    scene = bpy.context.scene
+    center = (bounds_min + bounds_max) * 0.5
+    extent = max((bounds_max - bounds_min).length, 1.0)
+    camera_data = bpy.data.cameras.new("ImageTo3D_PreviewCamera")
+    camera = bpy.data.objects.new("ImageTo3D_PreviewCamera", camera_data)
+    scene.collection.objects.link(camera)
+    camera.location = center + Vector((extent * 1.35, -extent * 2.3, extent * 0.9))
+    camera_data.type = "ORTHO"
+    camera_data.ortho_scale = extent * 1.45
+    aim(camera, center)
+    scene.camera = camera
+    for name, offset, energy, size in [
+        ("ImageTo3D_Key", (extent, -extent, extent * 1.2), 1000, extent),
+        ("ImageTo3D_Fill", (-extent, -extent * 0.3, extent * 0.5), 650, extent * 0.8),
+    ]:
+        data = bpy.data.lights.new(name, "AREA")
+        data.energy, data.shape, data.size = energy, "DISK", size
+        light = bpy.data.objects.new(name, data)
+        scene.collection.objects.link(light)
+        light.location = center + Vector(offset)
+        aim(light, center)
+    scene.render.engine = "BLENDER_EEVEE_NEXT"
+    scene.render.resolution_x = 640
+    scene.render.resolution_y = 640
+    scene.render.resolution_percentage = 100
+    scene.render.image_settings.file_format = "PNG"
+    scene.render.filepath = str(output_path)
+    if scene.world is not None:
+        scene.world.color = (0.08, 0.08, 0.08)
+    scene.render.film_transparent = False
+    bpy.ops.render.render(write_still=True)
+
+
+def main():
+    config = parse_config()
+    output = Path(config["output_dir"])
+    mesh_objects = [obj for obj in bpy.context.scene.objects if obj.type == "MESH"]
+    bounds_min, bounds_max = world_bounds(mesh_objects)
+    size = bounds_max - bounds_min
+    height = max(size.z, 0.5)
+    width = max(size.x, height * 0.24)
+    depth = max(size.y, height * 0.12)
+    cx, cy = (bounds_min.x + bounds_max.x) / 2, (bounds_min.y + bounds_max.y) / 2
+    z0, z1 = bounds_min.z + height * 0.39, bounds_min.z + height * 0.72
+    fitting = config["fitting"]
+    intensity = float(fitting.get("intensity", 1.0))
+    scale = (1.0 + 0.28 * intensity) if fitting["mode"] == "oversize" else max(0.68, 1.0 - 0.16 * intensity)
+    garment_width = width * 0.58
+    garment_depth = depth * 0.88
+    material = make_material(config["reference_color"])
+    create_torso(material, cx, cy, z0, z1, garment_width, garment_depth, scale)
+    shoulder_z = z0 + (z1 - z0) * 0.82
+    shoulder_x = garment_width * scale * 0.36
+    sleeve_length = max(width * 0.25, height * 0.09) * scale
+    radius_y = max(depth * 0.10, height * 0.035)
+    radius_z = max(height * 0.045, 0.025)
+    for side, label in [(-1, "L"), (1, "R")]:
+        start = (cx + side * shoulder_x, cy, shoulder_z)
+        end = (cx + side * (shoulder_x + sleeve_length), cy, shoulder_z - height * 0.06)
+        create_sleeve(material, start, end, radius_y, radius_z, scale, "Garment_Sleeve_" + label)
+
+    # La escena de salida incluye cámara y luces para que el BLEND se pueda inspeccionar.
+    all_min, all_max = world_bounds([obj for obj in bpy.context.scene.objects if obj.type == "MESH"])
+    create_preview(all_min, all_max, output / "preview.png")
+    # Empaqueta recursos externos cuando sea posible antes de crear la copia editable.
+    try:
+        bpy.ops.file.pack_all()
+    except RuntimeError:
+        pass
+
+    garment_objects = [obj for obj in bpy.context.scene.objects if obj.name.startswith("Garment_")]
+    export_objects = [obj for obj in bpy.context.scene.objects
+                      if obj.type == "MESH" and not obj.name.startswith("Garment_")]
+    for obj in bpy.context.selected_objects:
+        obj.select_set(False)
+    for obj in export_objects + garment_objects:
+        obj.select_set(True)
+    for extension in config["export_formats"]:
+        target = output / ("garment" + extension)
+        if extension == ".blend":
+            bpy.ops.wm.save_as_mainfile(filepath=str(target))
+        elif extension == ".glb":
+            bpy.ops.export_scene.gltf(filepath=str(target), export_format="GLB", use_selection=True)
+        elif extension == ".obj":
+            if hasattr(bpy.ops.wm, "obj_export"):
+                bpy.ops.wm.obj_export(filepath=str(target), export_selected_objects=True)
+            else:
+                bpy.ops.export_scene.obj(filepath=str(target), use_selection=True)
+    print("IMAGE_TO_3D_DONE")
+
+
+if __name__ == "__main__":
+    main()
