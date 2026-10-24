@@ -10,6 +10,7 @@ from backend.blender.runner import (
     BlenderCancelledError, BlenderExecutionError, find_blender, run_worker,
 )
 from backend.fitting.modes import validate_fitting_parameters
+from backend.generation.design import normalize_design
 from backend.validation.inputs import validate_blend, validate_reference
 
 WORKER_SCRIPT = Path(__file__).resolve().parents[1] / "blender" / "worker.py"
@@ -54,12 +55,13 @@ def _reference_color(reference_path, work_dir):
 
 
 def generate_garment(*, reference_path, blend_path, output_dir, fitting,
-                     cancel_event=None, progress_callback=None, export_formats=None):
+                     cancel_event=None, progress_callback=None, export_formats=None, garment_design=None):
     """Genera una plantilla procedural inicial. No es reconstrucción semántica mediante IA."""
     reference = validate_reference(reference_path)
     blend = validate_blend(blend_path)
     params = validate_fitting_parameters(fitting.get("mode", "oversize"),
                                          fitting.get("intensity", 1.0))
+    design = normalize_design(garment_design)
     blender = find_blender()
     if blender is None:
         raise BlenderExecutionError(
@@ -78,7 +80,7 @@ def generate_garment(*, reference_path, blend_path, output_dir, fitting,
         "job_id": job_id, "reference_frame": str(frame_path),
         "reference_color": list(color), "source_blend": str(blend),
         "output_dir": str(work_dir), "fitting": params,
-        "export_formats": list(requested),
+        "export_formats": list(requested), "garment_design": design,
     }
     config_path = work_dir / "worker_config.json"
     config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -104,8 +106,8 @@ def generate_garment(*, reference_path, blend_path, output_dir, fitting,
         raise BlenderExecutionError(f"No se generó la previsualización. Consulta {log_path}.")
     metadata = {
         "job_id": job_id, "status": "completado", "reference": str(reference),
-        "source_blend": str(blend), "fitting": params,
-        "generator": "procedural_template_v1",
+        "source_blend": str(blend), "fitting": params, "garment_design": design,
+        "generator": "procedural_template_v2",
         "notice": "Plantilla procedural; no reconstruye mediante IA el diseño exacto de la referencia.",
         "outputs": outputs, "preview": str(preview), "log": str(log_path),
     }
