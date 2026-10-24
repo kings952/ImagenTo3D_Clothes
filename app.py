@@ -14,6 +14,7 @@ from PIL import Image, ImageTk
 from backend.blender.runner import find_blender
 from backend.fitting.modes import FITTING_MODES, validate_fitting_parameters
 from backend.generation.service import GenerationCancelledError, generate_garment
+from backend.generation.design import normalize_design, preview_rings, project_preview_segments
 from backend.validation.inputs import validate_blend, validate_reference
 
 ROOT = Path(__file__).resolve().parent
@@ -32,6 +33,10 @@ class ImageTo3DApp(tk.Tk):
         self.output = tk.StringVar(value=str(ROOT / "outputs"))
         self.mode = tk.StringVar(value="oversize")
         self.intensity = tk.DoubleVar(value=1.0)
+        self.garment_type = tk.StringVar(value="camisa")
+        self.garment_back = tk.StringVar(value="cerrada")
+        self.garment_symmetry = tk.BooleanVar(value=True)
+        self._preview_angle = 0.5
         self.status = tk.StringVar(value="Selecciona una referencia y el cuerpo .blend.")
         self._events = queue.Queue()
         self._cancel_event = None
@@ -84,7 +89,26 @@ class ImageTo3DApp(tk.Tk):
         ttk.Spinbox(options, from_=0.0, to=2.0, increment=0.1, textvariable=self.intensity,
                     width=8).grid(row=0, column=3, padx=8, sticky="w")
         ttk.Button(options, text="Guardar configuración", command=self._save_config).grid(row=0, column=4, padx=(16, 0))
+        ttk.Label(options, text="Prenda").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        ttk.Combobox(options, textvariable=self.garment_type, values=("camisa", "vestido", "falda", "pantalon", "short"),
+            state="readonly", width=16).grid(row=1, column=1, padx=8, sticky="w", pady=(8, 0))
+        ttk.Label(options, text="Espalda").grid(row=1, column=2, sticky="w", padx=(18, 0), pady=(8, 0))
+        self.garment_back_box = ttk.Combobox(options, textvariable=self.garment_back,
+            values=("cerrada", "espalda_abierta"), state="readonly", width=18)
+        self.garment_back_box.grid(row=1, column=3, padx=8, sticky="w", pady=(8, 0))
+        self.symmetry_check = ttk.Checkbutton(options, text="Simétrica", variable=self.garment_symmetry)
+        self.symmetry_check.grid(row=1, column=4, padx=(8, 0), sticky="w", pady=(8, 0))
+        self.garment_type.trace_add("write", self._on_design_changed)
+        self.garment_back.trace_add("write", self._on_design_changed)
+        self.garment_symmetry.trace_add("write", self._on_design_changed)
         options.columnconfigure(5, weight=1)
+        design_frame = ttk.LabelFrame(root, text="3 · Previsualización 3D (independiente del cuerpo)", padding=5)
+        design_frame.pack(fill="x", pady=(2, 5))
+        self.design_canvas = tk.Canvas(design_frame, height=190, background="#20252d", highlightthickness=0)
+        self.design_canvas.pack(fill="x", expand=True)
+        self.design_canvas.bind("<Configure>", lambda _event: self._draw_design_preview())
+        self.design_canvas.bind("<Button-1>", self._remember_preview_drag)
+        self.design_canvas.bind("<B1-Motion>", self._rotate_design_preview)
         actions = ttk.Frame(root)
         actions.pack(fill="x", pady=(0, 4))
         self.start_button = ttk.Button(actions, text="Generar y exportar", command=self._start)
@@ -117,6 +141,50 @@ class ImageTo3DApp(tk.Tk):
         ttk.Entry(parent, textvariable=variable).grid(row=row, column=1, sticky="ew", padx=8, pady=4)
         ttk.Button(parent, text="Examinar…", command=command).grid(row=row, column=2, pady=4)
         parent.columnconfigure(1, weight=1)
+
+    def _on_design_changed(self, *_args):
+        kind = self.garment_type.get()
+        fixed = kind in ("falda", "pantalon", "short")
+        if fixed:
+            self.garment_symmetry.set(True)
+            self.symmetry_check.configure(state="disabled")
+            self.garment_back.set("cerrada")
+            self.garment_back_box.configure(state="disabled")
+        else:
+            self.symmetry_check.configure(state="normal")
+            self.garment_back_box.configure(state="readonly")
+        if kind not in ("camisa", "vestido"):
+            self.garment_back.set("cerrada")
+        self._draw_design_preview()
+
+    def _remember_preview_drag(self, event):
+        self._drag_x = event.x
+
+    def _rotate_design_preview(self, event):
+        previous = getattr(self, "_drag_x", event.x)
+        self._preview_angle += (event.x - previous) * 0.015
+        self._drag_x = event.x
+        self._draw_design_preview()
+
+    def _draw_design_preview(self):
+        canvas = getattr(self, "design_canvas", None)
+        if canvas is None:
+            return
+        canvas.delete("all")
+        width, height = max(canvas.winfo_width(), 420), max(canvas.winfo_height(), 190)
+        try:
+            design = normalize_design({"type": self.garment_type.get(), "back": self.garment_back.get(),
+                                       "symmetry": self.garment_symmetry.get()})
+            lines = project_preview_segments(preview_rings(design), width, height, self._preview_angle)
+            for a, b in lines:
+                canvas.create_line(a[0], a[1], b[0], b[1], fill="#61c8d8", width=1.3)
+            canvas.create_text(12, 12, anchor="nw", fill="#f2f4f8",
+                text=f"{design['type'].capitalize()} · {design['back']} · {'simétrica' if design['symmetry'] else 'asimétrica'}")
+            canvas.create_text(width-12, 12, anchor="ne", fill="#b5becb", text="Arrastra para girar")
+            canvas.create_text(width/2, height-8, anchor="s", fill="#a8b3c3",
+                text="Volumen conceptual; no es patrón de costura ni reconstrucción exacta")
+        except Exception as exc:
+            canvas.create_text(12, 12, anchor="nw", fill="#ffb0a8", text=str(exc))
 
     def _choose_reference(self):
         path = filedialog.askopenfilename(filetypes=[("Referencias", "*.png *.jpg *.jpeg *.webm"),
@@ -250,8 +318,10 @@ class ImageTo3DApp(tk.Tk):
         self.progress.start(12)
         self.status.set("Preparando trabajo…")
         self._append_result("\nNuevo trabajo iniciado.\n")
+        design = normalize_design({"type": self.garment_type.get(), "back": self.garment_back.get(),
+                                   "symmetry": self.garment_symmetry.get()})
         args = dict(reference_path=self.reference.get(), blend_path=self.blend.get(),
-                    output_dir=self.output.get(), fitting=fitting,
+                    output_dir=self.output.get(), fitting=fitting, garment_design=design,
                     cancel_event=self._cancel_event,
                     progress_callback=lambda message: self._events.put(("status", message)))
         self._worker = threading.Thread(target=self._run_job, kwargs=args, daemon=True)
@@ -330,7 +400,10 @@ class ImageTo3DApp(tk.Tk):
         try:
             config = {"reference": self.reference.get(), "blend": self.blend.get(),
                       "output": self.output.get(), "mode": self.mode.get(),
-                      "intensity": float(self.intensity.get())}
+                      "intensity": float(self.intensity.get()),
+                      "garment_type": self.garment_type.get(),
+                      "garment_back": self.garment_back.get(),
+                      "garment_symmetry": self.garment_symmetry.get()}
             CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
             CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
             self.status.set(f"Configuración guardada: {CONFIG_PATH}")
@@ -347,6 +420,10 @@ class ImageTo3DApp(tk.Tk):
             self.output.set(config.get("output", str(ROOT / "outputs")))
             self.mode.set(config.get("mode", "oversize"))
             self.intensity.set(float(config.get("intensity", 1.0)))
+            self.garment_type.set(config.get("garment_type", "camisa"))
+            self.garment_back.set(config.get("garment_back", "cerrada"))
+            self.garment_symmetry.set(bool(config.get("garment_symmetry", True)))
+            self._on_design_changed()
         except (OSError, ValueError, json.JSONDecodeError):
             self.status.set("No se pudo cargar settings.local.json; se usan valores predeterminados.")
 

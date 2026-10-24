@@ -77,3 +77,8 @@ Instalación opcional de la parte de segmentación:
 Instala PyTorch por separado desde https://pytorch.org/get-started/locally/ según tu versión de Python y si usarás CPU o CUDA. La primera carga del modelo necesita internet, pero la inferencia se ejecuta localmente y no usa claves API.
 
 La salida de malla sigue siendo procedural en esta versión. La máscara segmenta píxeles por categorías; no es un patrón de costura ni geometría 3D recuperada.
+
+
+## Selección de estructura y visor 3D preliminar
+
+La interfaz permite indicar tipo de prenda, simetría y espalda antes de generar. Faldas, pantalones y shorts fuerzan simetría. Camisas y vestidos permiten configurar espalda abierta. Un visor volumétrico girable permite revisar la intención de forma sin integrar la prenda al cuerpo .blend. La malla final sigue siendo procedural y es una aproximación, no una reconstrucción exacta.
