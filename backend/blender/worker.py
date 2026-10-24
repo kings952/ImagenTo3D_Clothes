@@ -193,7 +193,9 @@ def main():
     depth = max(size.y, height * 0.12)
     cx, cy = (bounds_min.x + bounds_max.x) / 2, (bounds_min.y + bounds_max.y) / 2
     z0, z1 = bounds_min.z + height * 0.39, bounds_min.z + height * 0.72
-    fitting = config["fitting"]\n    design = config.get("garment_design", {"type": "camisa", "symmetry": True, "back": "cerrada"})\n    garment_type = design.get("type", "camisa")
+    fitting = config["fitting"]
+    design = config.get("garment_design", {"type": "camisa", "symmetry": True, "back": "cerrada"})
+    garment_type = design.get("type", "camisa")
     intensity = float(fitting.get("intensity", 1.0))
     scale = (1.0 + 0.28 * intensity) if fitting["mode"] == "oversize" else max(0.68, 1.0 - 0.16 * intensity)
     garment_width = width * (0.58 if garment_type in ("camisa", "vestido") else 0.46)
@@ -213,7 +215,8 @@ def main():
             radius_y, radius_z = max(depth*.10,height*.035), max(height*.045,.025)
             for side, label in [(-1,"L"),(1,"R")]:
                 start=(cx+side*shoulder_x,cy,shoulder_z)
-                sleeve_factor = 1.0 if design.get("symmetry", True) or side > 0 else 0.72\n                end=(cx+side*(shoulder_x+sleeve_length*sleeve_factor),cy,shoulder_z-height*.06)
+                sleeve_factor = 1.0 if design.get("symmetry", True) or side > 0 else 0.72
+                end=(cx+side*(shoulder_x+sleeve_length*sleeve_factor),cy,shoulder_z-height*.06)
                 create_sleeve(material,start,end,radius_y,radius_z,scale,"Garment_Sleeve_"+label)
     elif garment_type == "falda":
         create_skirt(material,cx,cy,z0-height*.18,z1,garment_width*1.5,

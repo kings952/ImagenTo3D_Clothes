@@ -9,7 +9,8 @@ from PIL import Image, ImageStat
 from backend.blender.runner import (
     BlenderCancelledError, BlenderExecutionError, find_blender, run_worker,
 )
-from backend.fitting.modes import validate_fitting_parameters\nfrom backend.generation.design import normalize_design
+from backend.fitting.modes import validate_fitting_parameters
+from backend.generation.design import normalize_design
 from backend.validation.inputs import validate_blend, validate_reference
 
 WORKER_SCRIPT = Path(__file__).resolve().parents[1] / "blender" / "worker.py"
@@ -60,7 +61,8 @@ def generate_garment(*, reference_path, blend_path, output_dir, fitting,
     blend = validate_blend(blend_path)
     params = validate_fitting_parameters(fitting.get("mode", "oversize"),
                                          fitting.get("intensity", 1.0))
-    design = normalize_design(garment_design)\n    blender = find_blender()
+    design = normalize_design(garment_design)
+    blender = find_blender()
     if blender is None:
         raise BlenderExecutionError(
             "No se encontró Blender. Configura BLENDER_EXECUTABLE con la ruta a blender.exe."
