@@ -68,10 +68,12 @@ Cada ejecución crea una carpeta outputs/image_to_3d_<id>/ con los formatos expo
 
 ## Segmentación semántica experimental
 
-La GUI incluye una previsualización por categorías si se instalan opcionalmente `transformers` y `torch`. El modelo SegFormer de ropa intenta localizar categorías como `upper-clothes`, `dress`, `skirt` y `pants`; requiere descarga inicial del modelo y conexión a internet. La calidad depende de la vista, oclusiones y dominio de la imagen. No reconstruye varias vistas en una malla 3D coherente.
+La GUI incluye una previsualización por categorías mediante SegFormer, un modelo público y gratuito. No requiere API key ni un servicio de inferencia remoto: la predicción se ejecuta en el equipo (CPU o CUDA si PyTorch detecta una GPU compatible). La primera vez se necesita conexión para descargar los pesos públicos del modelo; después quedan en la caché local de Hugging Face. No se envían las imágenes a una API de inferencia.
 
-Instalación opcional:
+Instalación opcional de la parte de segmentación:
 
-    python -m pip install transformers torch
+    python -m pip install -r requirements-ml.txt
 
-La salida de malla sigue siendo procedural en esta versión. No se debe interpretar la máscara de categorías como un patrón de costura ni como geometría 3D recuperada.
+Instala PyTorch por separado desde https://pytorch.org/get-started/locally/ según tu versión de Python y si usarás CPU o CUDA. La primera carga del modelo necesita internet, pero la inferencia se ejecuta localmente y no usa claves API.
+
+La salida de malla sigue siendo procedural en esta versión. La máscara segmenta píxeles por categorías; no es un patrón de costura ni geometría 3D recuperada.
