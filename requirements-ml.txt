@@ -1,0 +1,4 @@
+# Dependencias opcionales para segmentación semántica.
+# Instala PyTorch desde https://pytorch.org/get-started/locally/ según tu CPU/GPU.
+transformers>=4.45,<5
+safetensors>=0.4
